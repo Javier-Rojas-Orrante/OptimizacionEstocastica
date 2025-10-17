@@ -1,4 +1,8 @@
-# Guía rápida de `TresBolillosSpace`
+# Reto
+
+Tiny test sirve, big test no.
+
+# `TresBolillosSpace`
 
 Esta clase modela un arreglo hexagonal de sitios apto para simulaciones de "tres bolillos". Se encarga de generar la geometría, asignar especies y calcular información útil para formulaciones de optimización. A continuación se describe cómo crear un espacio, inicializarlo y aprovechar sus métodos más importantes.
 
