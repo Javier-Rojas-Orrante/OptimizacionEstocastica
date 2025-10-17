@@ -1,10 +1,15 @@
 # Run Configuration Summary 1 
 
 No feasible solution found
+
 Lower bound:                    -418.039
+
 Enumerated nodes:               0
+
 Total iterations:               137712
+
 Time (CPU seconds):             7183.92
+
 Time (Wallclock seconds):       7451.44
 
 ## Problem data
