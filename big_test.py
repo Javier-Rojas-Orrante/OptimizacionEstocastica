@@ -221,6 +221,14 @@ if __name__ == "__main__":
     # Ensure pre-planting is sampled (or if you already sampled elsewhere, skip)
     space.sample_initial(seed=43)
 
+    rem, checks = space.remaining_bands(TARGETS, tol=TOL)
+    print("free_slots:", checks["free_slots"])
+    print("sum_L_rem:", checks["sum_L_rem"], " sum_U_rem:", checks["sum_U_rem"])
+    print("min_feasible_given_free?:", checks["min_feasible_given_free?"])
+    print("max_feasible_given_free?:", checks["max_feasible_given_free?"])
+    print("species_over_cap:", checks["species_over_cap"])
+
+
     # Solve
     model, x_val, y_val, summary = build_and_solve(
         space=space,
@@ -246,6 +254,8 @@ if __name__ == "__main__":
         L = summary["bands"][name]["L"]
         U = summary["bands"][name]["U"]
         print(f"  {name:25s}: {c:3d}  (band: [{L:3d}, {U:3d}])")
+
+
 
     # ----- Build chosen species index per node (0..m-1) -----
     chosen_idx = np.full(space.n, -1, dtype=int)
