@@ -257,4 +257,143 @@ class TresBolillosSpace:
         }
         return rem, checks
 
+    def set_plants(self, node_indices, species_identifier):
+        """
+        Set specific nodes to a given species.
+        
+        Parameters:
+        -----------
+        node_indices : int, list, array, or slice
+            Node index/indices to modify
+        species_identifier : int or str
+            Species index (0-9) or species name
+        
+        Example:
+        --------
+        space.set_plants([0, 1, 2], "Agave salmiana")
+        space.set_plants(50, 3)
+        space.set_plants(slice(0, 100), "Agave scabra")
+        """
+        if self.y_init is None or self.species_init is None:
+            raise RuntimeError("Must call sample_initial() first")
+        
+        # Convert species name to index if needed
+        if isinstance(species_identifier, str):
+            if species_identifier not in self.species:
+                raise ValueError(f"Species '{species_identifier}' not found. Available: {self.species}")
+            species_idx = self.species.index(species_identifier)
+        else:
+            species_idx = int(species_identifier)
+            if not (0 <= species_idx < len(self.species)):
+                raise ValueError(f"Species index must be 0-{len(self.species)-1}")
+        
+        # Handle different input types
+        if isinstance(node_indices, (int, np.integer)):
+            node_indices = [node_indices]
+        elif isinstance(node_indices, slice):
+            node_indices = range(*node_indices.indices(self.n))
+        
+        # Update both arrays
+        for idx in node_indices:
+            if not (0 <= idx < self.n):
+                raise IndexError(f"Node index {idx} out of range [0, {self.n-1}]")
+            self.species_init[idx] = species_idx
+            self.y_init[idx] = 1
+        
+        # Recalculate counts
+        self.counts = {self.species[i]: int((self.species_init == i).sum()) 
+                       for i in range(len(self.species))}
+    
+    def clear_plants(self, node_indices):
+        """
+        Clear (empty) specific nodes.
+        
+        Parameters:
+        -----------
+        node_indices : int, list, array, or slice
+            Node index/indices to clear
+        """
+        if self.y_init is None or self.species_init is None:
+            raise RuntimeError("Must call sample_initial() first")
+        
+        # Handle different input types
+        if isinstance(node_indices, (int, np.integer)):
+            node_indices = [node_indices]
+        elif isinstance(node_indices, slice):
+            node_indices = range(*node_indices.indices(self.n))
+        
+        # Clear nodes
+        for idx in node_indices:
+            if not (0 <= idx < self.n):
+                raise IndexError(f"Node index {idx} out of range [0, {self.n-1}]")
+            self.species_init[idx] = -1
+            self.y_init[idx] = 0
+        
+        # Recalculate counts
+        self.counts = {self.species[i]: int((self.species_init == i).sum()) 
+                       for i in range(len(self.species))}
+    
+    def get_matrix_view(self, value_type="species_name"):
+        """
+        Return the nodes arranged in matrix form (rows × cols) matching the plot layout.
+        The matrix is oriented bottom-up, so matrix[0] is the bottom row visually.
+        
+        Parameters:
+        -----------
+        value_type : str, default="species_name"
+            Type of values to return:
+            - "species_name": Species names (str), or "EMPTY" for unoccupied nodes
+            - "species_index": Species indices (int), or -1 for unoccupied nodes
+            - "node_id": Node IDs (int)
+            - "occupied": Binary (1 for occupied, 0 for empty)
+        
+        Returns:
+        --------
+        np.ndarray : Matrix of shape (rows, cols) with requested values
+        
+        Example:
+        --------
+        matrix = space.get_matrix_view("species_name")
+        print(matrix[0, 0])  # Bottom-left corner
+        print(matrix[-1, 0])  # Top-left corner
+        """
+        if self.mode != "rect":
+            raise NotImplementedError("Matrix view only available for 'rect' mode")
+        
+        if self.y_init is None or self.species_init is None:
+            raise RuntimeError("Must call sample_initial() first")
+        
+        # Create empty matrix
+        if value_type == "species_name":
+            matrix = np.empty((self.rows, self.cols), dtype=object)
+        else:
+            matrix = np.zeros((self.rows, self.cols), dtype=int)
+        
+        # Fill matrix: node index = row * cols + col
+        # Plot shows bottom-up, so we reverse row order
+        for r in range(self.rows):
+            for c in range(self.cols):
+                node_idx = r * self.cols + c
+                
+                if value_type == "species_name":
+                    species_idx = self.species_init[node_idx]
+                    if species_idx >= 0:
+                        matrix[r, c] = self.species[species_idx]
+                    else:
+                        matrix[r, c] = "EMPTY"
+                
+                elif value_type == "species_index":
+                    matrix[r, c] = self.species_init[node_idx]
+                
+                elif value_type == "node_id":
+                    matrix[r, c] = node_idx
+                
+                elif value_type == "occupied":
+                    matrix[r, c] = self.y_init[node_idx]
+                
+                else:
+                    raise ValueError(f"Unknown value_type: {value_type}")
+        
+        # Flip vertically to match bottom-up plot orientation
+        return np.flipud(matrix)
 
