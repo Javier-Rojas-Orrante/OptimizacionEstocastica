@@ -11,6 +11,115 @@ except Exception as e:
 
 from TresBolillosSpace import TresBolillosSpace  # <-- adjust filename if needed
 
+# ---------- helper: proportional downscale of TARGETS to any node count ----------
+# ---- helpers for smaller runs with the SAME rules ----
+def downscale_targets_exact(original: Dict[str, int], new_total: int) -> Dict[str, int]:
+    """Apportion to sum exactly new_total (Hamilton, largest remainder)."""
+    items = list(original.items())
+    tot_old = sum(v for _, v in items)
+    shares = [(k, v * new_total / tot_old) for k, v in items]
+    base = {k: int(math.floor(s)) for k, s in shares}
+    remainder = new_total - sum(base.values())
+    fracs = sorted(((k, s - base[k]) for k, s in shares), key=lambda x: x[1], reverse=True)
+    for i in range(remainder):
+        base[fracs[i][0]] += 1
+    return base
+
+def _pre_counts(space: TresBolillosSpace) -> Dict[str, int]:
+    """Count pre-planted species in the current space state."""
+    cnt = Counter()
+    for u in space.N:
+        i = int(space.species_init[u])
+        if i >= 0 and int(space.y_init[u]) == 1:
+            cnt[space.species[i]] += 1
+    return cnt
+
+def sample_preplant_until_feasible(space: TresBolillosSpace,
+                                   targets_small: Dict[str, int],
+                                   tol: float,
+                                   seed0: int,
+                                   tries: int = 200) -> bool:
+    """
+    Use the SAME preplant sampler, but reject samples that already violate
+    small targets (e.g., preplant counts > target when TOL=0).
+    """
+    for t in range(tries):
+        space.sample_initial(seed=seed0 + t)
+
+        # hard guard: no species can exceed its (tight) band from preplant alone
+        pc = _pre_counts(space)
+        if any(pc[s] > targets_small[s] for s in targets_small):
+            continue
+
+        rem, checks = space.remaining_bands(targets_small, tol=tol)
+        if checks.get("min_feasible_given_free?") and checks.get("max_feasible_given_free?"):
+            return True
+    return False
+
+def run_smaller_with_same_rules(rows: int, cols: int,
+                                tol: float,
+                                comp_seed: int,
+                                space_seed: int,
+                                preplant_seed: int,
+                                comp_sparsity: float,
+                                comp_diag_bonus: float,
+                                comp_offdiag_scale: float,
+                                alpha_comp: float,
+                                beta_surv: float):
+    """Build smaller grid and solve with identical constraints & locks."""
+    space = TresBolillosSpace.from_rect(rows=rows, cols=cols, seed=space_seed)
+
+    # Keep species list identical to big instance
+    space.species = list(TARGETS.keys())
+
+    # Downscale quotas to new node count (TOL preserved)
+    total_small = rows * cols
+    TARGETS_SMALL = downscale_targets_exact(TARGETS, total_small)
+    assert sum(TARGETS_SMALL.values()) == total_small
+    P_NOT_SURV_SMALL = dict(P_NOT_SURV)
+
+    # Preplant with identical mechanism; reject samples that break tight bands
+    if not sample_preplant_until_feasible(space, TARGETS_SMALL, tol=tol,
+                                          seed0=preplant_seed, tries=500):
+        raise RuntimeError(
+            "No feasible preplant found for the smaller grid with TOL=0. "
+            "Try a few more nodes (e.g., 7×7 or 8×8) or increase tries."
+        )
+
+    # Sanity print to PROVE you're on the small instance
+    rem, checks = space.remaining_bands(TARGETS_SMALL, tol=tol)
+    print(f"SMALL | nodes={space.n} free_slots={checks['free_slots']} "
+          f"sum_L_rem={checks['sum_L_rem']} sum_U_rem={checks['sum_U_rem']} "
+          f"min_feas?={checks['min_feasible_given_free?']} "
+          f"max_feas?={checks['max_feasible_given_free?']}")
+
+    model, x_val, y_val, summary = build_and_solve(
+        space=space,
+        targets=TARGETS_SMALL,
+        p_not_surv=P_NOT_SURV_SMALL,
+        tol=tol,
+        alpha_comp=alpha_comp,
+        beta_surv=beta_surv,
+        comp_seed=comp_seed,
+        comp_sparsity=comp_sparsity,
+        comp_diag_bonus=comp_diag_bonus,
+        comp_offdiag_scale=comp_offdiag_scale,
+        solver=None
+    )
+
+    print("\n=== SMALL RUN (same rules, TOL=0, preplant locked) ===")
+    print(f"Grid: {rows}×{cols} | Status: {summary['status']} | Obj: {round(summary['objective'], 6)}")
+    print(f"Nodes: {summary['n_nodes']} | Edges: {summary['n_edges']} | Avg degree: {summary['avg_degree']}")
+    print(f"Vars: x={summary['n_x_vars']}  y={summary['n_y_vars']} | Constraints: {summary['n_constraints']}")
+    print("\nSpecies counts (solution) vs bands:")
+    for name in space.species:
+        c = summary["species_counts"][name]
+        L = summary["bands"][name]["L"]
+        U = summary["bands"][name]["U"]
+        print(f"  {name:25s}: {c:3d}  (band: [{L:2d}, {U:2d}])")
+
+    return space, model, x_val, y_val, summary
+
 
 # -------------------------- Inputs --------------------------
 
@@ -42,7 +151,7 @@ P_NOT_SURV = {
 }
 
 # Tolerance ±5% on quotas
-TOL = 0.05
+TOL = 0.00
 
 # Objective trade-off weights
 ALPHA_COMP = 1.0   # weight on neighbor competition (penalize)
@@ -85,7 +194,7 @@ def make_competition_matrix(species: list,
 def build_and_solve(space: TresBolillosSpace,
                     targets: Dict[str, int],
                     p_not_surv: Dict[str, float],
-                    tol: float = 0.05,
+                    tol: float = 0.00,
                     alpha_comp: float = 1.0,
                     beta_surv: float = 1.0,
                     comp_seed: int = 0,
@@ -214,36 +323,51 @@ def build_and_solve(space: TresBolillosSpace,
 
 
 if __name__ == "__main__":
-    # Build your space from the class that lives in another file
-    # Example with rectangular grid 14x47 = 658 nodes
-    space = TresBolillosSpace.from_rect(rows=14, cols=47, seed=42)
+    USE_SMALL = True  # ← set True to run the smaller space, False for your 14×47
 
-    # Ensure pre-planting is sampled (or if you already sampled elsewhere, skip)
-    space.sample_initial(seed=43)
+    if USE_SMALL:
+        # e.g., 6×6 = 36 nodes with the SAME rules (TOL=0, preplant locked, same objective)
+        space, model, x_val, y_val, summary = run_smaller_with_same_rules(
+            rows=6, cols=6,
+            tol=TOL,                      # stays 0.00 as you want
+            comp_seed=SEED,
+            space_seed=42,
+            preplant_seed=43,
+            comp_sparsity=COMP_SPARSITY,
+            comp_diag_bonus=COMP_DIAG_BONUS,
+            comp_offdiag_scale=COMP_OFFDIAG_SCALE,
+            alpha_comp=ALPHA_COMP,
+            beta_surv=BETA_SURV
+        )
 
-    rem, checks = space.remaining_bands(TARGETS, tol=TOL)
-    print("free_slots:", checks["free_slots"])
-    print("sum_L_rem:", checks["sum_L_rem"], " sum_U_rem:", checks["sum_U_rem"])
-    print("min_feasible_given_free?:", checks["min_feasible_given_free?"])
-    print("max_feasible_given_free?:", checks["max_feasible_given_free?"])
-    print("species_over_cap:", checks["species_over_cap"])
+    else:
+        # ----- original big run (unchanged) -----
+        space = TresBolillosSpace.from_rect(rows=14, cols=47, seed=42)
+        space.sample_initial(seed=43)
 
+        # (these prints were what showed 535; they only make sense for the big run)
+        rem, checks = space.remaining_bands(TARGETS, tol=TOL)
+        print("free_slots:", checks["free_slots"])
+        print("sum_L_rem:", checks["sum_L_rem"], " sum_U_rem:", checks["sum_U_rem"])
+        print("min_feasible_given_free?:", checks["min_feasible_given_free?"])
+        print("max_feasible_given_free?:", checks["max_feasible_given_free?"])
+        print("species_over_cap:", checks["species_over_cap"])
 
-    # Solve
-    model, x_val, y_val, summary = build_and_solve(
-        space=space,
-        targets=TARGETS,
-        p_not_surv=P_NOT_SURV,
-        tol=TOL,
-        alpha_comp=ALPHA_COMP,
-        beta_surv=BETA_SURV,
-        comp_seed=SEED,
-        comp_sparsity=COMP_SPARSITY,
-        comp_diag_bonus=COMP_DIAG_BONUS,
-        comp_offdiag_scale=COMP_OFFDIAG_SCALE,
-        solver=None  # default CBC
-    )
+        model, x_val, y_val, summary = build_and_solve(
+            space=space,
+            targets=TARGETS,
+            p_not_surv=P_NOT_SURV,
+            tol=TOL,
+            alpha_comp=ALPHA_COMP,
+            beta_surv=BETA_SURV,
+            comp_seed=SEED,
+            comp_sparsity=COMP_SPARSITY,
+            comp_diag_bonus=COMP_DIAG_BONUS,
+            comp_offdiag_scale=COMP_OFFDIAG_SCALE,
+            solver=None
+        )
 
+    # ---------- common reporting (works for BOTH small and big) ----------
     print("Status:", summary["status"])
     print("Objective:", round(summary["objective"], 6))
     print("Nodes:", summary["n_nodes"], "| Edges:", summary["n_edges"], "| Avg degree:", summary["avg_degree"])
@@ -254,6 +378,10 @@ if __name__ == "__main__":
         L = summary["bands"][name]["L"]
         U = summary["bands"][name]["U"]
         print(f"  {name:25s}: {c:3d}  (band: [{L:3d}, {U:3d}])")
+
+    # ----- the rest of your saving/plotting block stays exactly as-is -----
+    # (chosen_idx build, CSVs, NPZ, optional plot)
+    # ...
 
 
 
@@ -326,3 +454,6 @@ if __name__ == "__main__":
         space.plot(figsize=(12, 5), point_size_occ=24, point_size_empty=5)
     except Exception:
         pass
+
+
+#--- Small ---

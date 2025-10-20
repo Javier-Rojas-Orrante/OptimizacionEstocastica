@@ -68,3 +68,42 @@ solver = pl.PULP_CBC_CMD(
     options=['log','5','threads','8'],
 )
 status = model.solve(solver)
+
+
+
+# El bueno 
+
+Result - Stopped on time limit
+
+Objective value:                2.27055000
+Lower bound:                    -18.092
+Gap:                            1.13
+Enumerated nodes:               1919
+Total iterations:               158123
+Time (CPU seconds):             171.45
+Time (Wallclock seconds):       173.19
+
+Option for printingOptions changed from normal to all
+Total time (CPU seconds):       171.50   (Wallclock seconds):       173.26
+
+
+[Scoring with GA metrics]
+[MILP] competencia_avg = 1.006667   diversidad_dev = 0.333333
+[BASE] competencia_avg = 0.100000   diversidad_dev = 1.200000
+
+=== REDUCED SPACE RUN (all species, proportional targets, TOL=0.05) ===
+Grid: 5x6  Nodes: 30  Edges: 69  AvgDeg: 4.6
+Status: Optimal  | Objective: 2.27055
+Vars: x = 300  y = 6900  | Constraints: 20810
+
+Species counts (solution) vs exact targets:
+  Agave lechuguilla        :   3  (target 2, band [1,3])
+  Agave salmiana           :   8  (target 9, band [8,10])
+  Agave scabra             :   2  (target 2, band [1,3])
+  Agave striata            :   2  (target 2, band [1,3])
+  Opuntia cantabrigiensis  :   3  (target 2, band [1,3])
+  Opuntia engelmannii      :   2  (target 2, band [1,3])
+  Opuntia robusta          :   3  (target 3, band [2,4])
+  Opuntia streptacantha    :   2  (target 3, band [2,4])
+  Prosopis laevigata       :   3  (target 4, band [3,5])
+  Yucca filifera           :   2  (target 1, band [0,2])

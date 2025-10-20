@@ -1,9 +1,15 @@
 # -*- coding: utf-8 -*-
-from typing import Dict, List, Tuple, Optional
+# Reduced-space MILP with ALL 10 species, targets downscaled proportionally,
+# SAME restrictions (incl. pre-plant locks), FIXED competition matrix.
+
+from typing import Dict, List, Tuple
 import math
 import numpy as np
+import pulp as pl
+from matplotlib.colors import BoundaryNorm
+from matplotlib.cm import get_cmap
 
-# ---------------- TresBolillosSpace (as provided) ----------------
+# ======================= SPACE / GRAPH =======================
 try:
     import matplotlib.pyplot as plt
 except Exception:
@@ -11,16 +17,16 @@ except Exception:
 
 class TresBolillosSpace:
     DEFAULT_SPECIES = [
-        "Agave lechuguilla",
-        "Agave salmiana",
-        "Agave scabra",
-        "Agave striata",
-        "Opuntia cantabrigiensis",
-        "Opuntia engelmannii",
-        "Opuntia robusta",
-        "Opuntia streptacantha",
-        "Prosopis laevigata",
-        "Yucca filifera",
+        "Agave lechuguilla",       # AL
+        "Agave salmiana",          # AS
+        "Agave scabra",            # ASc
+        "Agave striata",           # ASt
+        "Opuntia cantabrigiensis", # OC
+        "Opuntia engelmannii",     # OE
+        "Opuntia robusta",         # OR
+        "Opuntia streptacantha",   # OS
+        "Prosopis laevigata",      # PL
+        "Yucca filifera",          # YF
     ]
 
     DEFAULT_SPECIES_PROBS = {
@@ -51,8 +57,8 @@ class TresBolillosSpace:
         self.n = len(self.N)
 
         self.y_init = None        # np.ndarray (0/1)
-        self.species_init = None  # np.ndarray (-1 o índice)
-        self.counts = None        # dict nombre->conteo
+        self.species_init = None  # np.ndarray (-1 or species index)
+        self.counts = None        # dict name->count
 
     @classmethod
     def from_rect(cls, rows=14, cols=47, **kwargs):
@@ -67,7 +73,7 @@ class TresBolillosSpace:
             return self._build_hex_edges_rect(self.rows, self.cols)
         elif self.mode == "disk":
             return self._build_hex_edges_n(self.n_sites)
-        raise ValueError("mode debe ser 'rect' o 'disk'.")
+        raise ValueError("mode must be 'rect' or 'disk'.")
 
     @staticmethod
     def _build_hex_edges_rect(rows, cols):
@@ -115,7 +121,7 @@ class TresBolillosSpace:
         p = np.array([self.species_probs[name] for name in self.species], dtype=float)
         s = p.sum()
         if s <= 0:
-            raise ValueError("La suma de probabilidades de especies debe ser > 0.")
+            raise ValueError("Sum of species probabilities must be > 0.")
         return p / s
 
     def sample_initial(self, seed=None):
@@ -135,10 +141,6 @@ class TresBolillosSpace:
 
     @staticmethod
     def add_preplanted_constraints_pulp(model, x, N, species_init, n_species):
-        try:
-            import pulp as pl  # noqa: F401
-        except Exception:
-            raise RuntimeError("Necesitas 'pulp' instalado.")
         for u in N:
             i_star = int(species_init[u])
             if i_star >= 0:
@@ -147,75 +149,7 @@ class TresBolillosSpace:
                     if j != i_star:
                         model += x[(u, j)] == 0
 
-    def _positions_rect(self, spacing=1.0):
-        dx = spacing * 0.5
-        dy = spacing * math.sqrt(3) / 2
-        pts = []
-        for r in range(self.rows):
-            for c in range(self.cols):
-                x = c * spacing + (dx if r % 2 else 0.0)
-                y = r * dy
-                pts.append((x, y))
-        return np.array(pts)
-
-    def _positions_disk(self, spacing=1.0):
-        def hex_count(R): return 1 + 3*R*(R+1)
-        R = 0
-        while hex_count(R) < self.n:
-            R += 1
-        coords = []
-        for q in range(-R, R+1):
-            rmin = max(-R, -q-R)
-            rmax = min(R, -q+R)
-            for r in range(rmin, rmax+1):
-                coords.append((q, r))
-        coords = coords[:self.n]
-        pts = []
-        rt3_2 = math.sqrt(3)/2
-        for (q, r) in coords:
-            x = q + 0.5*r
-            y = rt3_2 * r
-            pts.append((spacing * x, spacing * y))
-        return np.array(pts)
-
-    def plot(self, spacing=1.0, show_edges=True, figsize=(12, 5),
-             point_size_empty=10, point_size_occ=28):
-        if plt is None:
-            raise RuntimeError("Matplotlib no está disponible.")
-        from matplotlib.colors import BoundaryNorm
-        pos = self._positions_rect(spacing) if self.mode == "rect" else self._positions_disk(spacing)
-        fig, ax = plt.subplots(figsize=figsize)
-        if show_edges:
-            for (u, v) in self.edges:
-                x1, y1 = pos[u]; x2, y2 = pos[v]
-                ax.plot([x1, x2], [y1, y2], lw=0.4, alpha=0.25, color="#6a9fb5")
-        if self.y_init is None or self.species_init is None:
-            ax.scatter(pos[:, 0], pos[:, 1], s=18, alpha=0.9, color="#4f83cc")
-        else:
-            empty = (self.y_init == 0)
-            if np.any(empty):
-                ax.scatter(pos[empty, 0], pos[empty, 1], s=point_size_empty, alpha=0.5, color="#b0c4de")
-            occ = (self.y_init == 1)
-            if np.any(occ):
-                cmap = plt.get_cmap("tab10")
-                boundaries = np.arange(-0.5, len(self.species) + 0.5, 1.0)
-                norm = BoundaryNorm(boundaries, cmap.N)
-                sc = ax.scatter(pos[occ, 0], pos[occ, 1], s=point_size_occ,
-                                c=self.species_init[occ], cmap=cmap, norm=norm, alpha=0.95, edgecolors="none")
-                cbar = fig.colorbar(sc, ax=ax, ticks=np.arange(len(self.species)), fraction=0.03, pad=0.02)
-                cbar.ax.set_yticklabels(self.species)
-                cbar.set_label("Especie", rotation=90)
-                cbar.ax.tick_params(labelsize=9)
-        ax.set_aspect("equal")
-        title = f"Tres bolillos — {self.mode} — nodos={self.n}"
-        if self.y_init is not None:
-            title += f" | ocupados={int(self.y_init.sum())}"
-        ax.set_title(title)
-        ax.axis("off")
-        fig.tight_layout()
-        plt.show()
-
-    # ===== cuotas / bandas =====
+    # ===== quotas / bands =====
     def pre_counts(self):
         if self.species_init is None:
             return {name: 0 for name in self.species}
@@ -245,7 +179,7 @@ class TresBolillosSpace:
             Lp = max(0, bu["L"] - P)
             Up = max(0, bu["U"] - P)
             if P > bu["U"]:
-                infeasible.append((name, "pre={} > U={}".format(P, bu["U"])))
+                infeasible.append((name, f"pre={P} > U={bu['U']}"))
             rem[name] = {"pre": P, "L_rem": Lp, "U_rem": Up}
         min_needed = sum(v["L_rem"] for v in rem.values())
         max_allow = sum(v["U_rem"] for v in rem.values())
@@ -258,11 +192,8 @@ class TresBolillosSpace:
             "species_over_cap": infeasible,
         }
         return rem, checks
-# ----------------------------------------------------------------
 
-import pulp as pl
-
-# === Original full targets and mortality ===
+# ======================= DATA (FULL) =======================
 SPECIES_TARGETS_FULL = {
     "Agave lechuguilla":        42,
     "Agave salmiana":           196,
@@ -288,104 +219,154 @@ PROB_NOT_SURVIVE = {
     "Yucca filifera":           0.13685,
 }
 
-# ---------- helpers ----------
-def make_scaled_targets(original_targets: Dict[str, int], total_sites: int, subset: List[str] | None = None) -> Dict[str, int]:
-    items = [(k, original_targets[k]) for k in (subset if subset else original_targets.keys())]
-    total_orig = sum(v for _, v in items)
-    if total_orig <= 0:
-        raise ValueError("Original targets must sum > 0")
-    floats = [(k, v * total_sites / total_orig) for k, v in items]
-    rounded = {k: int(round(x)) for k, x in floats}
-    drift = total_sites - sum(rounded.values())
-    # adjust by residual magnitude
-    residuals = sorted([(k, x - round(x)) for k, x in floats], key=lambda t: -abs(t[1]))
-    idx = 0
-    while drift != 0 and residuals:
-        k, _ = residuals[idx % len(residuals)]
-        if drift > 0:
-            rounded[k] += 1
-            drift -= 1
-        else:
-            if rounded[k] > 0:
-                rounded[k] -= 1
-                drift += 1
-        idx += 1
-    return rounded
+# Fixed 10x10 competition matrix (order = DEFAULT_SPECIES)
+# Abbrev order: [AL, AS, ASc, ASt, OC, OE, OR, OS, PL, YF]
+C_FIXED = np.array([
+    [1.0, 0.8, 0.8, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],  # AL
+    [0.8, 1.0, 0.8, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],  # AS
+    [0.8, 0.8, 1.0, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],  # ASc
+    [0.8, 0.8, 0.8, 1.0, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],  # ASt
+    [0.3, 0.3, 0.3, 0.3, 1.0, 0.8, 0.8, 0.8, 0.5, 0.2],  # OC
+    [0.3, 0.3, 0.3, 0.3, 0.8, 1.0, 0.8, 0.8, 0.5, 0.2],  # OE
+    [0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 1.0, 0.8, 0.5, 0.2],  # OR
+    [0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 0.8, 1.0, 0.5, 0.2],  # OS
+    [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 0.3],  # PL
+    [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 1.0],  # YF
+], dtype=float)
 
-def subset_dict(d: Dict[str, float], keys: List[str]) -> Dict[str, float]:
-    return {k: d[k] for k in keys}
+# ======================= HELPERS =======================
+def apportion_targets_proportionally(original: Dict[str, int], new_total: int, species_order: List[str]) -> Dict[str, int]:
+    """
+    Hamilton (largest remainder) apportionment to keep all species proportions and sum exactly new_total.
+    """
+    items = [(k, original[k]) for k in species_order]
+    tot_old = sum(v for _, v in items)
+    shares = [(k, v * new_total / tot_old) for k, v in items]
+    base = {k: int(math.floor(s)) for k, s in shares}
+    remainder = new_total - sum(base.values())
+    # sort by fractional part descending
+    fracs = sorted(((k, s - base[k]) for k, s in shares), key=lambda x: x[1], reverse=True)
+    for i in range(remainder):
+        base[fracs[i][0]] += 1
+    return base
 
-def build_random_competition(species: list, seed: int = 123) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    S = len(species)
-    M = rng.uniform(0.1, 1.0, size=(S, S))
-    C = 0.5 * (M + M.T)
-    for i in range(S):
-        C[i, i] = max(C[i, i], 1.05)  # stronger same-species penalty
-    return C
+def sample_preplant_until_feasible(space: TresBolillosSpace,
+                                   targets_small: Dict[str, int],
+                                   tol: float,
+                                   seed0: int,
+                                   tries: int = 200) -> bool:
+    """
+    Uses the SAME preplant mechanism and keeps hard locks; only varies seed to find a feasible draw for bands (tol).
+    """
+    for t in range(tries):
+        space.sample_initial(seed=seed0 + t)
+        _, checks = space.remaining_bands(targets_small, tol=tol)
+        if checks.get("min_feasible_given_free?") and checks.get("max_feasible_given_free?") and not checks.get("species_over_cap"):
+            return True
+    return False
 
-# ---------- MILP ----------
+
+#===================== me da flojera mergear
+def fitnessCompetencia_edges(space, plantas_matrix, C):
+    """Sum C[su, sv] over every undirected edge in space.edges."""
+    # IMPORTANT: your helpers already return matrices flipped with np.flipud,
+    # so DO NOT flip again here, or you'll misalign indices.
+    mat = plantas_matrix
+    competencia = 0.0
+    rows, cols = mat.shape
+
+    for (u, v) in space.edges:
+        ru, cu = divmod(u, cols)
+        rv, cv = divmod(v, cols)
+        su = mat[ru, cu]
+        sv = mat[rv, cv]
+        if su >= 0 and sv >= 0:
+            competencia += C[su, sv]   # <- was 'total' by mistake
+    return competencia
+
+
+
+def fitnessDiversidad(plantas, num_especies):
+    """
+    Calcula la diversidad de especies en la matriz de plantas.
+    La suma de las desviaciones de una distribución uniforme de especies.
+    Valor ideal es 0 (todas las especies están igualmente representadas).
+    """
+    freq_especies = np.zeros(num_especies)
+    total_plantas = 0
+    for i in range(plantas.shape[0]):
+        for j in range(plantas.shape[1]):
+            especie_nodo = plantas[i, j]
+            if especie_nodo >= 0:  # Solo contar nodos con plantas
+                freq_especies[especie_nodo] += 1
+                total_plantas += 1
+
+    diversidad = 0
+    for i in range(num_especies):
+        proporcion_actual = freq_especies[i] / total_plantas if total_plantas > 0 else 0
+        proporcion_ideal = 1 / num_especies if num_especies > 0 else 0
+        diversidad += abs(proporcion_actual - proporcion_ideal)
+
+    return diversidad
+
+
+
+# ======================= MILP =======================
 def build_and_solve(
     space: TresBolillosSpace,
     targets: Dict[str, int],
     p_not_survive: Dict[str, float],
-    tol: float = 0.05,
-    w_surv: float = 1.0,
-    w_comp: float = 1.0,
-    comp_seed: int = 123,
-    time_limit_sec: int | None = 60,
-) -> Tuple[Dict[int, int], Dict[str, int], float]:
+    C: np.ndarray,
+    tol: float = 0.00,      # bands at 0 as requested
+    w_comp: float = 1.0,    # penalize competition
+    w_surv: float = 1.0,    # reward survival (implemented as -survival in objective)
+    time_limit_sec: int | None = 120,
+) -> Tuple[Dict[int, int], Dict[str, int], float, dict]:
+    # ensure preplant present
     if space.y_init is None or space.species_init is None:
-        space.sample_initial()  # uses space.seed if provided
+        space.sample_initial()
 
     N, E, species = space.to_pulp()
-    n, m = len(N), len(E)
+    n_nodes, n_edges = len(N), len(E)
     S = len(species)
 
-    # map inputs to index order
-    T = np.array([int(targets[s]) for s in species], dtype=int)
-    p_die = np.array([float(p_not_survive[s]) for s in species], dtype=float)
+    # Map inputs to index order
+    surv_reward = np.array([1.0 - float(p_not_survive[s]) for s in species], dtype=float)    
 
-    # bands and feasibility quick-checks
+    # Bands & feasibility check
     bands = space.quota_bands_total(targets, tol=tol)
-    rem, checks = space.remaining_bands(targets, tol=tol)
+    _, checks = space.remaining_bands(targets, tol=tol)
     if checks["species_over_cap"]:
         over = ", ".join(f"{nm} ({msg})" for nm, msg in checks["species_over_cap"])
-        raise ValueError("Infeasible: pre-planted counts exceed cap: " + over)
+        raise ValueError("Infeasible (preplant exceeds cap): " + over)
     if not checks["min_feasible_given_free?"] or not checks["max_feasible_given_free?"]:
         raise ValueError(
-            f"Infeasible: free={checks['free_slots']}, "
+            f"Infeasible bands vs free slots: free={checks['free_slots']}, "
             f"min_needed={checks['sum_L_rem']}, max_allow={checks['sum_U_rem']}"
         )
 
-    C = build_random_competition(species, seed=comp_seed)
+    # Model
+    model = pl.LpProblem("Reforestation_ReducedSpace", pl.LpMinimize)
 
-    model = pl.LpProblem("ReforestationAssignment_Small", pl.LpMinimize)
+    # Decision variables
+    x = pl.LpVariable.dicts("x", ((u, i) for u in N for i in range(S)), 0, 1, cat="Binary")
+    y = pl.LpVariable.dicts("y", ((u, v, i, j) for (u, v) in E for i in range(S) for j in range(S)), 0, 1, cat="Binary")
 
-    # x[u,i]
-    x = pl.LpVariable.dicts("x", ((u, i) for u in N for i in range(S)), lowBound=0, upBound=1, cat="Binary")
-    # y[u,v,i,j]
-    y = pl.LpVariable.dicts(
-        "y",
-        ((u, v, i, j) for (u, v) in E for i in range(S) for j in range(S)),
-        lowBound=0, upBound=1, cat="Binary"
-    )
-
-    # one species per node
+    # (1) one species per node
     for u in N:
-        model += pl.lpSum(x[(u, i)] for i in range(S)) == 1
+        model += pl.lpSum(x[(u, i)] for i in range(S)) == 1, f"one_species_node_{u}"
 
-    # honor pre-planted
+    # (2) preplanted locks
     TresBolillosSpace.add_preplanted_constraints_pulp(model, x, N, space.species_init, S)
 
-    # quotas
+    # (3) quotas (bands at tol)
     for i, sname in enumerate(species):
-        L_i = bands[sname]["L"]
-        U_i = bands[sname]["U"]
-        model += pl.lpSum(x[(u, i)] for u in N) >= L_i
-        model += pl.lpSum(x[(u, i)] for u in N) <= U_i
+        L_i, U_i = bands[sname]["L"], bands[sname]["U"]
+        tot_i = pl.lpSum(x[(u, i)] for u in N)
+        model += tot_i >= L_i, f"quota_L_{sname}"
+        model += tot_i <= U_i, f"quota_U_{sname}"
 
-    # AND linearization
+    # (4) linearization y[u,v,i,j] = x[u,i] AND x[v,j]
     for (u, v) in E:
         for i in range(S):
             for j in range(S):
@@ -393,89 +374,265 @@ def build_and_solve(
                 model += y[(u, v, i, j)] <= x[(v, j)]
                 model += y[(u, v, i, j)] >= x[(u, i)] + x[(v, j)] - 1
 
-    # objective
-    scale_surv = 1.0 / max(1, n)
-    scale_comp = 1.0 / max(1, m)
-    obj_surv = scale_surv * pl.lpSum(p_die[i] * x[(u, i)] for u in N for i in range(S))
-    obj_comp = scale_comp * pl.lpSum(C[i, j] * y[(u, v, i, j)] for (u, v) in E for i in range(S) for j in range(S))
-    model += w_surv * obj_surv + w_comp * obj_comp
+    # (5) objective = w_comp * sum(C[i,j]*y)  -  w_surv * sum(surv_reward[i]*x)
+    comp_term = pl.lpSum(C[i, j] * y[(u, v, i, j)] for (u, v) in E for i in range(S) for j in range(S))
+    surv_term = pl.lpSum(surv_reward[i] * x[(u, i)] for u in N for i in range(S))
+    model += w_comp * comp_term - w_surv * surv_term
 
+    # Solve
     solver = pl.PULP_CBC_CMD(msg=1, timeLimit=time_limit_sec) if time_limit_sec else pl.PULP_CBC_CMD(msg=1)
-    model.solve(solver)
+    status = model.solve(solver)
+    status_str = pl.LpStatus[status]
+    if status_str not in ("Optimal", "Integer Feasible", "Feasible"):
+        raise RuntimeError(f"Solver status: {status_str}. No integral solution to extract.")
 
+
+    # Extract assignment
     assign_idx: Dict[int, int] = {}
     for u in N:
-        chosen = None
-        for i in range(S):
-            if pl.value(x[(u, i)]) > 0.5:
-                chosen = i
-                break
-        if chosen is None:
-            chosen = int(np.argmax([pl.value(x[(u, i)]) for i in range(S)]))
-        assign_idx[u] = chosen
+        # pick the argmax in case of numerical ties
+        vals = [pl.value(x[(u, i)]) for i in range(S)]
+        assign_idx[u] = int(np.argmax(vals))
 
     counts_by_name: Dict[str, int] = {species[i]: 0 for i in range(S)}
     for u, i in assign_idx.items():
         counts_by_name[species[i]] += 1
 
-    return assign_idx, counts_by_name, pl.value(model.objective)
+    summary = {
+        "status": pl.LpStatus[status],
+        "objective": float(pl.value(model.objective)),
+        "n_nodes": n_nodes,
+        "n_edges": n_edges,
+        "avg_degree": round(2 * n_edges / max(1, n_nodes), 3),
+        "n_x_vars": len(x),
+        "n_y_vars": len(y),
+        "n_constraints": len(model.constraints),
+        "bands": bands,
+        "species": species,
+    }
+    return assign_idx, counts_by_name, float(pl.value(model.objective)), summary
 
-# --------------------------- TINY TEST MAIN ---------------------------
+# ---------- Robust plot helper (no class internals needed) ----------
+def _hex_positions_rect(rows: int, cols: int, spacing: float = 1.0):
+    import math
+    dx = spacing * 0.5
+    dy = spacing * math.sqrt(3) / 2.0
+    pts = []
+    for r in range(rows):
+        for c in range(cols):
+            x = c * spacing + (dx if (r % 2) else 0.0)
+            y = r * dy
+            pts.append((x, y))
+    return np.array(pts, dtype=float)
+
+def _grid_positions(n: int, spacing: float = 1.0):
+    # fallback when we don't know rows/cols: near-square grid
+    import math
+    rows = int(math.floor(math.sqrt(n)))
+    cols = int(math.ceil(n / rows))
+    pts = []
+    for u in range(n):
+        r, c = divmod(u, cols)
+        pts.append((c * spacing, r * spacing))
+    return np.array(pts, dtype=float)
+
+
+def plot_solution(space,
+                  assignment: dict | None = None,
+                  title: str = "Layout",
+                  spacing: float = 1.0,
+                  show_edges: bool = True,
+                  point_size_occ: int = 26,
+                  point_size_empty: int = 6):
+    """
+    Hex (offset) plot. If `assignment` is provided (dict node->species_idx), plot that;
+    else plot the preplant in space.y_init/space.species_init.
+    """
+    import math
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    n = getattr(space, "n", len(getattr(space, "N", [])))
+    rows = getattr(space, "rows", None)
+    cols = getattr(space, "cols", None)
+    mode = getattr(space, "mode", "rect")
+    species_names = list(getattr(space, "species", []))
+    m = len(species_names)
+
+    # hex positions if rectangular
+    if mode == "rect" and rows and cols and rows * cols == n:
+        dx = 0.5 * spacing
+        dy = math.sqrt(3) / 2.0 * spacing
+        pos = np.zeros((n, 2), dtype=float)
+        for r in range(rows):
+            for c in range(cols):
+                u = r * cols + c
+                pos[u, 0] = c * spacing + (dx if (r % 2) else 0.0)
+                pos[u, 1] = r * dy
+    else:
+        # simple grid fallback
+        side = int(math.ceil(math.sqrt(n)))
+        pos = np.column_stack(np.unravel_index(np.arange(n), (side, side)))[0:n]
+        pos = pos[:, ::-1].astype(float) * spacing
+
+    # Decide labels to plot
+    if assignment is not None:
+        lab = np.array([assignment[u] for u in range(n)], dtype=int)
+        occ_mask = np.ones(n, dtype=bool)
+        empty_mask = ~occ_mask
+    else:
+        if space.y_init is None or space.species_init is None:
+            print("Nothing to plot: provide `assignment` or sample preplant first.")
+            return
+        lab = np.array(space.species_init, dtype=int)
+        occ_mask = (np.array(space.y_init, dtype=int) == 1)
+        empty_mask = ~occ_mask
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+
+    if show_edges and hasattr(space, "edges"):
+        for (u, v) in space.edges:
+            x1, y1 = pos[u]; x2, y2 = pos[v]
+            ax.plot([x1, x2], [y1, y2], lw=0.5, alpha=0.25, color="#8aa6c1")
+
+    if empty_mask.any():
+        ax.scatter(pos[empty_mask, 0], pos[empty_mask, 1],
+                   s=point_size_empty, alpha=0.35, color="#c9d6e4", edgecolors="none")
+
+    # Discrete colormap: one bin per species
+    cmap = get_cmap("tab10", max(10, m))
+    boundaries = np.arange(-0.5, m + 0.5, 1.0)
+    norm = BoundaryNorm(boundaries, cmap.N)
+
+    sc = ax.scatter(pos[occ_mask, 0], pos[occ_mask, 1],
+                    s=point_size_occ, c=lab[occ_mask],
+                    cmap=cmap, norm=norm, alpha=0.95, edgecolors="none")
+
+    cbar = fig.colorbar(sc, ax=ax, ticks=np.arange(m), fraction=0.035, pad=0.02)
+    if species_names and len(species_names) == m:
+        cbar.ax.set_yticklabels(species_names)
+    cbar.set_label("Especie", rotation=90)
+    cbar.ax.tick_params(labelsize=9)
+
+    ax.set_aspect("equal")
+    ax.set_title(title)
+    ax.axis("off")
+    fig.tight_layout()
+    plt.show()
+
+def assignment_dict_to_matrix(assignment: dict, rows: int, cols: int) -> np.ndarray:
+    """
+    Turn MILP assignment dict (u->species_idx) into a rows x cols matrix,
+    then flip vertically to match how your GA scorer reads it.
+    """
+    mat = np.full((rows, cols), -1, dtype=int)
+    for u, sp in assignment.items():
+        r, c = divmod(u, cols)
+        mat[r, c] = int(sp)
+    return np.flipud(mat)
+
+
+def preplant_to_matrix(space) -> np.ndarray:
+    """
+    Build a rows x cols matrix from the preplant (fixed nodes).
+    Empty nodes become -1. Flip vertically to match GA scorer.
+    """
+    rows, cols = space.rows, space.cols
+    mat = np.full((rows, cols), -1, dtype=int)
+    for u in range(space.n):
+        r, c = divmod(u, cols)
+        if space.y_init[u] == 1:
+            mat[r, c] = int(space.species_init[u])
+    return np.flipud(mat)
+
+
+def score_layout_like_GA(matrix: np.ndarray, C: np.ndarray, n_species: int, space) -> tuple[float, float]:
+    comp_sum = fitnessCompetencia_edges(space, matrix, C)
+    n_occupied = (matrix >= 0).sum()
+    f1_avg = comp_sum / max(n_occupied, 1)
+    f2_div = fitnessDiversidad(matrix, n_species)
+    return f1_avg, f2_div
+
+
+
+# ======================= MAIN (REDUCED SPACE) =======================
 if __name__ == "__main__":
-    # Tiny grid: 6x8 = 48 nodes
-    rows, cols = 6, 8
-    total_sites = rows * cols
+    # --- Choose a smaller grid here ---
+    rows, cols = 5, 6           # e.g., 6x6 = 36 nodes (change as you like)
+    TOL = 0.05                  # bands at 0 (exact targets)
+    SEED_SPACE = 42             # geometry / RNG base
+    SEED_PREPLANT = 43          # preplant RNG (we will iterate seeds to hit feasibility)
+    P_OCCUPIED = 0.1963257453   # keep same occupied probability to preserve rule
 
-    # Use 4 species (subset of your 10)
-    species_subset = [
-        "Agave salmiana",
-        "Opuntia robusta",
-        "Prosopis laevigata",
-        "Yucca filifera",
-    ]
-
-    # Build tiny space with NO pre-planted nodes (feasibility safe)
+    # Build reduced space with ALL species (same order as matrix)
     space = TresBolillosSpace.from_rect(
         rows=rows, cols=cols,
-        species=species_subset,
-        species_probs=subset_dict(TresBolillosSpace.DEFAULT_SPECIES_PROBS, species_subset),
-        p_occupied=0.0,
-        seed=1
+        species=TresBolillosSpace.DEFAULT_SPECIES,
+        species_probs=TresBolillosSpace.DEFAULT_SPECIES_PROBS,
+        p_occupied=P_OCCUPIED,
+        seed=SEED_SPACE
     )
-    space.sample_initial(seed=1)
 
-    # Scale targets exactly to 48 nodes for the chosen subset
-    SPECIES_TARGETS_TINY = make_scaled_targets(SPECIES_TARGETS_FULL, total_sites, subset=species_subset)
-    PROB_NOT_SURVIVE_TINY = subset_dict(PROB_NOT_SURVIVE, species_subset)
+    # Downscale targets proportionally to rows*cols (ALL species kept)
+    total_sites = rows * cols
+    TARGETS_SMALL = apportion_targets_proportionally(SPECIES_TARGETS_FULL, total_sites, space.species)
+    assert sum(TARGETS_SMALL.values()) == total_sites, "Downscaled targets must sum to grid size."
 
-    # Solve
-    assignment, counts, obj = build_and_solve(
+    # Try preplant seeds until bands (TOL=0) are feasible with locks
+    ok = sample_preplant_until_feasible(space, TARGETS_SMALL, tol=TOL, seed0=SEED_PREPLANT, tries=400)
+    if not ok:
+        raise RuntimeError("Could not find a feasible preplant for the reduced bands with TOL=0. Try a slightly larger grid or increase tries.")
+
+    plot_solution(space, assignment=None, title="Preplant (locked nodes)")
+
+    # Solve (same rules; fixed competition matrix)
+    assignment, counts, obj, summary = build_and_solve(
         space=space,
-        targets=SPECIES_TARGETS_TINY,
-        p_not_survive=PROB_NOT_SURVIVE_TINY,
+        targets=TARGETS_SMALL,
+        p_not_survive=PROB_NOT_SURVIVE,
+        C=C_FIXED,
         tol=0.05,
-        w_surv=1.0,
         w_comp=1.0,
-        comp_seed=2025,
-        time_limit_sec=60
+        w_surv=1.0,
+        time_limit_sec=180
     )
 
-    print("\n[TINY] Objective value:", obj)
-    print("[TINY] Assigned counts (±5% bands):")
-    for k in species_subset:
-        T = SPECIES_TARGETS_TINY[k]
-        L, U = math.floor(0.95*T), math.ceil(1.05*T)
-        print(f" - {k:24s}: {counts[k]:3d}  (target {T}, band [{L},{U}])")
+    # Report
+    # --- GA-style scoring of the MILP solution ---
+    milp_matrix = assignment_dict_to_matrix(assignment, rows, cols)
+    f1_milp, f2_milp = score_layout_like_GA(milp_matrix, C_FIXED, len(space.species), space)
 
-    # Optional: quick plot
+    print("\n[Scoring with GA metrics]")
+    print(f"[MILP] competencia_avg = {f1_milp:.6f}   diversidad_dev = {f2_milp:.6f}")
+
+    # --- Baseline: preplant ---
+
+    preplant_matrix = preplant_to_matrix(space)
+    f1_pre, f2_pre = score_layout_like_GA(preplant_matrix, C_FIXED, len(space.species), space)
+
+    print(f"[BASE] competencia_avg = {f1_pre:.6f}   diversidad_dev = {f2_pre:.6f}")
+
+
+    print("\n=== REDUCED SPACE RUN (all species, proportional targets, TOL=0.05) ===")
+    print(f"Grid: {rows}x{cols}  Nodes: {summary['n_nodes']}  Edges: {summary['n_edges']}  AvgDeg: {summary['avg_degree']}")
+    print("Status:", summary["status"], " | Objective:", round(summary["objective"], 6))
+    print("Vars: x =", summary["n_x_vars"], " y =", summary["n_y_vars"], " | Constraints:", summary["n_constraints"])
+    print("\nSpecies counts (solution) vs exact targets:")
+    for name in space.species:
+        T = TARGETS_SMALL[name]
+        c = counts.get(name, 0)
+        L = summary["bands"][name]["L"]; U = summary["bands"][name]["U"]
+        print(f"  {name:25s}: {c:3d}  (target {T}, band [{L},{U}])")
+
+        # Optional quick plot of final assignment (requires matplotlib)
     try:
-        if plt is not None:
-            backup_y, backup_species = space.y_init.copy(), space.species_init.copy()
-            space.y_init = np.ones(space.n, dtype=int)
-            space.species_init = np.array([assignment[u] for u in range(space.n)], dtype=int)
-            space.plot(spacing=1.0, show_edges=False, figsize=(8, 4), point_size_empty=0, point_size_occ=28)
-            space.y_init, space.species_init = backup_y, backup_species
-        else:
-            print("Plot skipped: Matplotlib no disponible.")
+        plot_solution(space,
+                    assignment=assignment,   # dict node->species_idx
+                    title="MILP assignment (reduced grid)",
+                    spacing=1.0,
+                    show_edges=False,
+                    point_size_occ=28)
     except Exception as e:
         print("Plot skipped:", e)
+
+
