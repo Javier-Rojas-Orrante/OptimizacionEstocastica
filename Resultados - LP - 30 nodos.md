@@ -1,8 +1,13 @@
 
 # Resultado 
-**Grid:** 5×5  **Nodes:** 25  **Edges:** 56  **Avg. Degree:** 4.48  
-**Status:**  Optimal  **Objective:** −0.6939  
-**Variables:** x = 250  y = 5600  **Constraints:** 16 875  
+
+[Scoring with GA metrics]
+[MILP] competencia_avg = 0.973333   diversidad_dev = 0.400000
+[BASE] competencia_avg = 0.100000   diversidad_dev = 1.200000
+
+**Grid:** 5×5  **Nodes:** 25  **Edges:** 69 **Avg. Degree:** 4.48  
+**Status:**  Optimal  **Objective:** 29.2  
+**Variables:** x = 250  y = 6900 **Constraints:** 20810  
 ## Preplantado
 ![Pre plantado](figs/preplant_5x6.png)
 

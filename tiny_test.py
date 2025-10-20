@@ -374,10 +374,10 @@ def build_and_solve(
                 model += y[(u, v, i, j)] <= x[(v, j)]
                 model += y[(u, v, i, j)] >= x[(u, i)] + x[(v, j)] - 1
 
-    # (5) objective = w_comp * sum(C[i,j]*y)  -  w_surv * sum(surv_reward[i]*x)
+   # (5) objective = w_comp * sum(C[i,j]*y)  -  w_surv * sum(surv_reward[i]*x)
     comp_term = pl.lpSum(C[i, j] * y[(u, v, i, j)] for (u, v) in E for i in range(S) for j in range(S))
     surv_term = pl.lpSum(surv_reward[i] * x[(u, i)] for u in N for i in range(S))
-    model += w_comp * comp_term - w_surv * surv_term
+    model += w_comp * comp_term
 
     # Solve
     solver = pl.PULP_CBC_CMD(msg=1, timeLimit=time_limit_sec) if time_limit_sec else pl.PULP_CBC_CMD(msg=1)
