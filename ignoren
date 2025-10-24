@@ -1,0 +1,24 @@
+import os
+import pulp as pl
+
+# Configura las llaves WLS dentro del código
+os.environ["GRB_WLSACCESSID"] = "TU_WLS_ACCESS_ID"
+os.environ["GRB_WLSSECRET"]   = "TU_WLS_SECRET"
+os.environ["GRB_LICENSEID"]   = "TU_LICENSE_ID"
+
+# Usa el solver GUROBI (API Python, no el CMD)
+solver = pl.GUROBI(
+    msg=1,
+    timeLimit=3600,
+    options={
+        "Threads": 16,
+        "MIPGap": 0.01,
+        "MIPFocus": 1,
+        "Presolve": 2,
+        "Cuts": 2,
+        "Heuristics": 0.2,
+        "Symmetry": 2,
+    },
+)
+
+status = model.solve(solver)
