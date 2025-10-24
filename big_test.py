@@ -301,11 +301,28 @@ def build_and_solve_gurobi(space,
         model.addConstr(y[((u, v), i, j)] >= x[u, i] + x[v, j] - 1)
 
     # --- Objective ---
-    surv = {name: 1.0 - float(p_not_surv[name]) for name in species}
-    surv_factor = {(i, j): 1.0 / (1.0 - surv[species[i]] * surv[species[j]]) for i in range(n_species) for j in range(n_species)}
-    adj_term = gp.quicksum(0.5 * C[i, j] * surv_factor[(i, j)] * y[((u, v), i, j)]
-                           for ((u, v), i, j) in pair_index)
-    model.setObjective(alpha_comp * adj_term, GRB.MINIMIZE)
+        # --- Objective: match the paper (f1 + f2) ---
+    # f1 = (1/N) * sum_{(u,v) in E} sum_{i,j} C[i,j] * y[(u,v),i,j]
+    N_float = float(n_nodes)
+    f1 = (1.0 / N_float) * gp.quicksum(
+        C[i, j] * y[((u, v), i, j)] for ((u, v), i, j) in pair_index
+    )
+
+    # f2 = sum_k | (n_k / N) - 1/m |
+    m = n_species
+    one_over_m = 1.0 / float(m)
+
+    # proportions for each species k: pk = (1/N) * sum_u x[u,k]
+    # absolute value via auxiliary z_k >= | pk - 1/m |
+    z = model.addVars(n_species, lb=0.0, name="z")
+    for k in range(n_species):
+        pk = (1.0 / N_float) * gp.quicksum(x[u, k] for u in N)
+        model.addConstr(z[k] >= pk - one_over_m)
+        model.addConstr(z[k] >= -(pk - one_over_m))
+    f2 = gp.quicksum(z[k] for k in range(n_species))
+
+    # Combine with weights (alpha_comp on f1, beta_surv ON f2)
+    model.setObjective(alpha_comp * f1 + beta_surv * f2, GRB.MINIMIZE)
 
     # --- Solve ---
     print(f"Solving model with {n_nodes} nodes and {len(x)} x-vars, {len(y)} y-vars...")
