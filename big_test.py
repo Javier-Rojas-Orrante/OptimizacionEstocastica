@@ -459,4 +459,12 @@ if __name__ == "__main__":
         pass
 
 
-#--- Small ---
+#--- Solvers ---
+# # Gurobi (academic free)
+# pl.LpSolverDefault = pl.GUROBI_CMD(msg=1, timeLimit=1800, threads=8)
+
+# # or CPLEX
+# pl.LpSolverDefault = pl.CPLEX_PY(msg=1, timelimit=1800)
+
+# # or SCIP
+# pl.LpSolverDefault = pl.SCIP_CMD(msg=True, limits_time=1800, threads=8)
