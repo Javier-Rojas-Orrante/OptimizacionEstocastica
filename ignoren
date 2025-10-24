@@ -1,6 +1,3 @@
-
-Dime que tiene de mal este codigo , porque no corre para el small test
-
 from typing import Dict, Tuple
 import numpy as np
 import math
@@ -89,7 +86,7 @@ def run_smaller_with_same_rules(rows: int, cols: int,
     if not sample_preplant_until_feasible(space, TARGETS_SMALL, tol=tol,
                                           seed0=preplant_seed, tries=500):
         raise RuntimeError(
-            "No feasible preplant found for the smaller grid with TOL=0. "
+            "No feasible preplant found for the smaller grid with given tol. "
             "Try a few more nodes (e.g., 7×7 or 8×8) or increase tries."
         )
 
@@ -100,20 +97,22 @@ def run_smaller_with_same_rules(rows: int, cols: int,
           f"min_feas?={checks['min_feasible_given_free?']} "
           f"max_feas?={checks['max_feasible_given_free?']}")
 
+    # --------- PATCH A: pasar targets/es y tol del small ----------
     model, x_val, y_val, summary =  build_and_solve_gurobi(
             space=space,
-            targets=TARGETS,
-            p_not_surv=P_NOT_SURV,
-            tol=TOL,
-            alpha_comp=ALPHA_COMP,
-            beta_surv=BETA_SURV,
-            comp_seed=SEED,
-            comp_sparsity=COMP_SPARSITY,
-            comp_diag_bonus=COMP_DIAG_BONUS,
-            comp_offdiag_scale=COMP_OFFDIAG_SCALE
+            targets=TARGETS_SMALL,         # <-- small targets
+            p_not_surv=P_NOT_SURV_SMALL,   # <-- same survival map
+            tol=tol,                       # <-- tol from small test
+            alpha_comp=alpha_comp,
+            beta_surv=beta_surv,
+            comp_seed=comp_seed,
+            comp_sparsity=comp_sparsity,
+            comp_diag_bonus=comp_diag_bonus,
+            comp_offdiag_scale=comp_offdiag_scale
         )
+    # --------- END PATCH A ----------
 
-    print("\n=== SMALL RUN (same rules, TOL=0, preplant locked) ===")
+    print("\n=== SMALL RUN (same rules, preplant locked) ===")
     print(f"Grid: {rows}×{cols} | Status: {summary['status']} | Obj: {round(summary['objective'], 6)}")
     print(f"Nodes: {summary['n_nodes']} | Edges: {summary['n_edges']} | Avg degree: {summary['avg_degree']}")
     print(f"Vars: x={summary['n_x_vars']}  y={summary['n_y_vars']} | Constraints: {summary['n_constraints']}")
@@ -302,6 +301,7 @@ def build_and_solve_gurobi(space,
         model.addConstr(y[((u, v), i, j)] >= x[u, i] + x[v, j] - 1)
 
     # --- Objective ---
+    surv = {name: 1.0 - float(p_not_surv[name]) for name in species}
     surv_factor = {(i, j): 1.0 / (1.0 - surv[species[i]] * surv[species[j]]) for i in range(n_species) for j in range(n_species)}
     adj_term = gp.quicksum(0.5 * C[i, j] * surv_factor[(i, j)] * y[((u, v), i, j)]
                            for ((u, v), i, j) in pair_index)
@@ -345,10 +345,10 @@ if __name__ == "__main__":
     USE_SMALL = True  # ← set True to run the smaller space, False for your 14×47
 
     if USE_SMALL:
-        # e.g., 6×6 = 36 nodes with the SAME rules (TOL=0, preplant locked, same objective)
+        # e.g., 10×10 = 100 nodes with the SAME rules (bands via tol, preplant locked, same objective)
         space, model, x_val, y_val, summary = run_smaller_with_same_rules(
             rows=10, cols=10,
-            tol=TOL,                      # stays 0.00 as you want
+            tol=TOL,                      # usa el tol que definiste arriba
             comp_seed=SEED,
             space_seed=42,
             preplant_seed=43,
@@ -364,7 +364,6 @@ if __name__ == "__main__":
         space = TresBolillosSpace.from_rect(rows=14, cols=47, seed=42)
         space.sample_initial(seed=43)
 
-        # (these prints were what showed 535; they only make sense for the big run)
         rem, checks = space.remaining_bands(TARGETS, tol=TOL)
         print("free_slots:", checks["free_slots"])
         print("sum_L_rem:", checks["sum_L_rem"], " sum_U_rem:", checks["sum_U_rem"])
@@ -400,8 +399,6 @@ if __name__ == "__main__":
     # ----- the rest of your saving/plotting block stays exactly as-is -----
     # (chosen_idx build, CSVs, NPZ, optional plot)
     # ...
-
-
 
     # ----- Build chosen species index per node (0..m-1) -----
     chosen_idx = np.full(space.n, -1, dtype=int)
@@ -483,5 +480,3 @@ if __name__ == "__main__":
 
 # # or SCIP
 # pl.LpSolverDefault = pl.SCIP_CMD(msg=True, limits_time=1800, threads=8)
-
-
