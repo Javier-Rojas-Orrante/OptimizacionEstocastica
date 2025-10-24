@@ -3,6 +3,10 @@ import numpy as np
 import math
 import csv
 from collections import Counter
+import gurobipy as gp
+import os
+from gurobipy import GRB
+#Halamadrid_10
 
 try:
     import pulp as pl
@@ -82,7 +86,7 @@ def run_smaller_with_same_rules(rows: int, cols: int,
     if not sample_preplant_until_feasible(space, TARGETS_SMALL, tol=tol,
                                           seed0=preplant_seed, tries=500):
         raise RuntimeError(
-            "No feasible preplant found for the smaller grid with TOL=0. "
+            "No feasible preplant found for the smaller grid with given tol. "
             "Try a few more nodes (e.g., 7×7 or 8×8) or increase tries."
         )
 
@@ -93,21 +97,22 @@ def run_smaller_with_same_rules(rows: int, cols: int,
           f"min_feas?={checks['min_feasible_given_free?']} "
           f"max_feas?={checks['max_feasible_given_free?']}")
 
-    model, x_val, y_val, summary = build_and_solve(
-        space=space,
-        targets=TARGETS_SMALL,
-        p_not_surv=P_NOT_SURV_SMALL,
-        tol=tol,
-        alpha_comp=alpha_comp,
-        beta_surv=beta_surv,
-        comp_seed=comp_seed,
-        comp_sparsity=comp_sparsity,
-        comp_diag_bonus=comp_diag_bonus,
-        comp_offdiag_scale=comp_offdiag_scale,
-        solver=None
-    )
+    # --------- PATCH A: pasar targets/es y tol del small ----------
+    model, x_val, y_val, summary =  build_and_solve_gurobi(
+            space=space,
+            targets=TARGETS_SMALL,         # <-- small targets
+            p_not_surv=P_NOT_SURV_SMALL,   # <-- same survival map
+            tol=tol,                       # <-- tol from small test
+            alpha_comp=alpha_comp,
+            beta_surv=beta_surv,
+            comp_seed=comp_seed,
+            comp_sparsity=comp_sparsity,
+            comp_diag_bonus=comp_diag_bonus,
+            comp_offdiag_scale=comp_offdiag_scale
+        )
+    # --------- END PATCH A ----------
 
-    print("\n=== SMALL RUN (same rules, TOL=0, preplant locked) ===")
+    print("\n=== SMALL RUN (same rules, preplant locked) ===")
     print(f"Grid: {rows}×{cols} | Status: {summary['status']} | Obj: {round(summary['objective'], 6)}")
     print(f"Nodes: {summary['n_nodes']} | Edges: {summary['n_edges']} | Avg degree: {summary['avg_degree']}")
     print(f"Vars: x={summary['n_x_vars']}  y={summary['n_y_vars']} | Constraints: {summary['n_constraints']}")
@@ -151,7 +156,7 @@ P_NOT_SURV = {
 }
 
 # Tolerance ±5% on quotas
-TOL = 0.00
+TOL = 0.05
 
 # Objective trade-off weights
 ALPHA_COMP = 1.0   # weight on neighbor competition (penalize)
@@ -190,119 +195,129 @@ def make_competition_matrix(species: list,
     np.fill_diagonal(C, C.diagonal() + diag_bonus)
     return C
 
+def build_and_solve_gurobi(space,
+                           targets,
+                           p_not_surv,
+                           tol=0.05,
+                           alpha_comp=1.0,
+                           beta_surv=1.0,
+                           comp_seed=0,
+                           comp_sparsity=0.0,
+                           comp_diag_bonus=1.0,
+                           comp_offdiag_scale=1.0):
+    """
+    Pure Gurobi version of build_and_solve().
+    Handles both large and small grids, and returns best incumbent solution.
+    """
 
-def build_and_solve(space: TresBolillosSpace,
-                    targets: Dict[str, int],
-                    p_not_surv: Dict[str, float],
-                    tol: float = 0.00,
-                    alpha_comp: float = 1.0,
-                    beta_surv: float = 1.0,
-                    comp_seed: int = 0,
-                    comp_sparsity: float = 0.0,
-                    comp_diag_bonus: float = 1.0,
-                    comp_offdiag_scale: float = 1.0,
-                    solver: pl.LpSolver_CMD | None = None
-                    ) -> Tuple[pl.LpProblem, dict, dict, dict]:
-    """
-    Returns:
-      model: PuLP model
-      x_val: {(u,i): 0/1} assignments
-      y_val: (empty dict by default; can extract if needed)
-      summary: status, objective, counts, bands, sizes
-    """
-    # Ensure we have a pre-planted state
-    if space.y_init is None or space.species_init is None:
-        space.sample_initial(seed=comp_seed)
+    # --- Connect to Gurobi with WLS credentials ---
+    env = gp.Env(params={
+        "WLSAccessID": "18f52dbc-253b-4d74-adc3-6e2d1c4b89d2",
+        "WLSSecret":   "3cab943f-8d9c-4e49-92a4-18e8b6d90024",
+        "LicenseID":   2727523,
+        "LogToConsole": 1
+    })
 
     N, edges, species = space.to_pulp()
     n_nodes = len(N)
     n_species = len(species)
+    total_targets = sum(targets.values())
+    if total_targets != n_nodes:
+        # Adjust the first species to fill the remaining nodes
+        first_species = list(targets.keys())[0]
+        targets[first_species] += n_nodes - total_targets
+        print(f"Adjusted targets: sum now = {sum(targets.values())}, targets = {targets}")
 
-    assert sum(targets.values()) == n_nodes, "Targets must sum to number of nodes."
-    assert set(targets.keys()) == set(species), "Targets keys must match species list."
-    assert set(p_not_surv.keys()) == set(species), "Survival table keys must match species."
+    assert sum(targets.values()) == n_nodes, "Targets must sum to number of nodes"
 
-    # Quota bands
+    # --- Parameters ---
     bands = space.quota_bands_total(targets, tol=tol)
-
-    # Survival reward per species
     surv = {name: 1.0 - float(p_not_surv[name]) for name in species}
 
-    # Competition matrix
-    C = make_competition_matrix(
-        species,
-        seed=comp_seed,
-        sparsity=comp_sparsity,
-        diag_bonus=comp_diag_bonus,
-        offdiag_scale=comp_offdiag_scale
-    )
+    # --- Fixed competition matrix ---
+    C = np.array([
+        [1.0, 0.8, 0.8, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],
+        [0.8, 1.0, 0.8, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],
+        [0.8, 0.8, 1.0, 0.8, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],
+        [0.8, 0.8, 0.8, 1.0, 0.3, 0.3, 0.3, 0.3, 0.5, 0.2],
+        [0.3, 0.3, 0.3, 0.3, 1.0, 0.8, 0.8, 0.8, 0.5, 0.2],
+        [0.3, 0.3, 0.3, 0.3, 0.8, 1.0, 0.8, 0.8, 0.5, 0.2],
+        [0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 1.0, 0.8, 0.5, 0.2],
+        [0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 0.8, 1.0, 0.5, 0.2],
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0, 0.3],
+        [0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 1.0],
+    ])
+    assert C.shape == (len(species), len(species)), "Competition matrix size mismatch!"
 
-    model = pl.LpProblem("Reforestation_Layout", pl.LpMinimize)
+    name_to_idx = {name: i for i, name in enumerate(species)}
 
-    # Decision variables
-    x = pl.LpVariable.dicts("x",
-                            ((u, i) for u in N for i in range(n_species)),
-                            lowBound=0, upBound=1, cat=pl.LpBinary)
+    # --- Model setup ---
+    model = gp.Model("Reforestation_Layout", env=env)
 
-    # Only create y for pairs with C[i,j] > 0
-    E = [(u, v) for (u, v) in edges]  # undirected with u < v assumed by class
+    # Time & performance parameters
+    model.Params.TimeLimit = 600 if n_nodes <= 64 else 1800
+    model.Params.Threads = min(24, os.cpu_count())
+    model.Params.MIPGap = 0.02
+    model.Params.MIPFocus = 1
+    model.Params.Heuristics = 0.2
+    model.Params.Presolve = 2
+    model.Params.Cuts = 2
+    model.Params.Symmetry = 2
+
+    # --- Decision variables ---
+    x = model.addVars(n_nodes, n_species, vtype=GRB.BINARY, name="x")
+
+    E = [(u, v) for (u, v) in edges]
     pair_index = [((u, v), i, j)
                   for (u, v) in E
                   for i in range(n_species)
                   for j in range(n_species)
                   if C[i, j] > 0.0]
+    y = model.addVars(pair_index, vtype=GRB.BINARY, name="y")
 
-    y = pl.LpVariable.dicts("y", pair_index, lowBound=0, upBound=1, cat=pl.LpBinary)
-
-    # Constraints
-
+    # --- Constraints ---
     # (1) One species per node
     for u in N:
-        model += pl.lpSum(x[(u, i)] for i in range(n_species)) == 1, f"one_species_node_{u}"
+        model.addConstr(gp.quicksum(x[u, i] for i in range(n_species)) == 1)
 
-    # (2) Lock pre-planted nodes exactly
-    space.add_preplanted_constraints_pulp(model, x, N, space.species_init, n_species)
+    # (2) Lock preplanted
+    for u in N:
+        pre_i = int(space.species_init[u])
+        if pre_i >= 0 and int(space.y_init[u]) == 1:
+            for i in range(n_species):
+                model.addConstr(x[u, i] == (1 if i == pre_i else 0))
 
-    # (3) Species totals within bands
-    name_to_idx = {name: i for i, name in enumerate(species)}
+    # (3) Quotas within bands
     for name, bu in bands.items():
         i = name_to_idx[name]
-        total_i = pl.lpSum(x[(u, i)] for u in N)
-        model += total_i >= bu["L"], f"quota_L_{name}"
-        model += total_i <= bu["U"], f"quota_U_{name}"
+        total_i = gp.quicksum(x[u, i] for u in N)
+        model.addConstr(total_i >= bu["L"])
+        model.addConstr(total_i <= bu["U"])
 
-    # (4) Linearization for neighbor competition y_uvij = x_ui * x_vj
+    # (4) Linearization
     for ((u, v), i, j) in pair_index:
-        model += y[((u, v), i, j)] <= x[(u, i)]
-        model += y[((u, v), i, j)] <= x[(v, j)]
-        model += y[((u, v), i, j)] >= x[(u, i)] + x[(v, j)] - 1
+        model.addConstr(y[((u, v), i, j)] <= x[u, i])
+        model.addConstr(y[((u, v), i, j)] <= x[v, j])
+        model.addConstr(y[((u, v), i, j)] >= x[u, i] + x[v, j] - 1)
 
-    # Objective = # --- Combine competition and survival interaction directly --- Es el nuevo de mafer
+    # --- Objective ---
+    surv = {name: 1.0 - float(p_not_surv[name]) for name in species}
     surv_factor = {(i, j): 1.0 / (1.0 - surv[species[i]] * surv[species[j]]) for i in range(n_species) for j in range(n_species)}
-    adj_term = pl.lpSum(
-        0.5 * C[i, j] * surv_factor[(i, j)] * y[((u, v), i, j)]
-        for ((u, v), i, j) in pair_index
-    )
-    model += alpha_comp * adj_term
+    adj_term = gp.quicksum(0.5 * C[i, j] * surv_factor[(i, j)] * y[((u, v), i, j)]
+                           for ((u, v), i, j) in pair_index)
+    model.setObjective(alpha_comp * adj_term, GRB.MINIMIZE)
 
-    # Solve
-    if solver is None:
-        solver = pl.PULP_CBC_CMD(
-    msg=1,                 # print to console
-    options=[
-        'log', '5',        # CBC verbosity (0..5; 4–5 is very chatty)
-        'threads', '8',    # if you want
-        # 'ratio','0.01',  # mip gap target (optional)
-    ],
-    # keepFiles=True,      # keep temp files (see #3)
-)
-    status = model.solve(solver)
+    # --- Solve ---
+    print(f"Solving model with {n_nodes} nodes and {len(x)} x-vars, {len(y)} y-vars...")
+    model.optimize()
 
-    # Results
-    x_val = {(u, i): int(pl.value(x[(u, i)]) > 0.5) for u in N for i in range(n_species)}
-    y_val = {}  # huge; skip unless needed
+    # --- Extract results safely ---
+    if model.SolCount == 0:
+        print("⚠️ No feasible solution found.")
+        return model, {}, {}, {"status": model.Status, "objective": None}
 
-    # Species counts
+    x_val = {(u, i): int(x[u, i].X > 0.5) if x[u, i].X is not None else 0 for u in N for i in range(n_species)}
+
     counts = {name: 0 for name in species}
     for u in N:
         for i, name in enumerate(species):
@@ -311,8 +326,8 @@ def build_and_solve(space: TresBolillosSpace,
                 break
 
     summary = {
-        "status": pl.LpStatus[status],
-        "objective": float(pl.value(model.objective)),
+        "status": model.Status,
+        "objective": model.ObjVal if model.SolCount > 0 else None,
         "species_counts": counts,
         "bands": bands,
         "n_nodes": n_nodes,
@@ -320,19 +335,20 @@ def build_and_solve(space: TresBolillosSpace,
         "avg_degree": round(2 * len(E) / n_nodes, 3),
         "n_x_vars": len(x),
         "n_y_vars": len(y),
-        "n_constraints": len(model.constraints),
+        "n_constraints": model.NumConstrs,
     }
-    return model, x_val, y_val, summary
 
+    print(f"\n✅ Model done: Obj={summary['objective']:.3f}, Gap={model.MIPGap*100:.2f}% | Status={model.Status}")
+    return model, x_val, {}, summary
 
 if __name__ == "__main__":
     USE_SMALL = False  # ← set True to run the smaller space, False for your 14×47
 
     if USE_SMALL:
-        # e.g., 6×6 = 36 nodes with the SAME rules (TOL=0, preplant locked, same objective)
+        # e.g., 10×10 = 100 nodes with the SAME rules (bands via tol, preplant locked, same objective)
         space, model, x_val, y_val, summary = run_smaller_with_same_rules(
-            rows=6, cols=6,
-            tol=TOL,                      # stays 0.00 as you want
+            rows=10, cols=10,
+            tol=TOL,                      # usa el tol que definiste arriba
             comp_seed=SEED,
             space_seed=42,
             preplant_seed=43,
@@ -348,7 +364,6 @@ if __name__ == "__main__":
         space = TresBolillosSpace.from_rect(rows=14, cols=47, seed=42)
         space.sample_initial(seed=43)
 
-        # (these prints were what showed 535; they only make sense for the big run)
         rem, checks = space.remaining_bands(TARGETS, tol=TOL)
         print("free_slots:", checks["free_slots"])
         print("sum_L_rem:", checks["sum_L_rem"], " sum_U_rem:", checks["sum_U_rem"])
@@ -356,7 +371,7 @@ if __name__ == "__main__":
         print("max_feasible_given_free?:", checks["max_feasible_given_free?"])
         print("species_over_cap:", checks["species_over_cap"])
 
-        model, x_val, y_val, summary = build_and_solve(
+        model, x_val, y_val, summary = build_and_solve_gurobi(
             space=space,
             targets=TARGETS,
             p_not_surv=P_NOT_SURV,
@@ -366,8 +381,7 @@ if __name__ == "__main__":
             comp_seed=SEED,
             comp_sparsity=COMP_SPARSITY,
             comp_diag_bonus=COMP_DIAG_BONUS,
-            comp_offdiag_scale=COMP_OFFDIAG_SCALE,
-            solver=None
+            comp_offdiag_scale=COMP_OFFDIAG_SCALE
         )
 
     # ---------- common reporting (works for BOTH small and big) ----------
@@ -385,8 +399,6 @@ if __name__ == "__main__":
     # ----- the rest of your saving/plotting block stays exactly as-is -----
     # (chosen_idx build, CSVs, NPZ, optional plot)
     # ...
-
-
 
     # ----- Build chosen species index per node (0..m-1) -----
     chosen_idx = np.full(space.n, -1, dtype=int)
