@@ -277,10 +277,13 @@ def build_and_solve(space: TresBolillosSpace,
         model += y[((u, v), i, j)] <= x[(v, j)]
         model += y[((u, v), i, j)] >= x[(u, i)] + x[(v, j)] - 1
 
-    # Objective = alpha * competition - beta * survival
-    comp_term = pl.lpSum(C[i, j] * y[((u, v), i, j)] for ((u, v), i, j) in pair_index)
-    surv_term = pl.lpSum(surv[species[i]] * x[(u, i)] for u in N for i in range(n_species))
-    model += alpha_comp * comp_term - beta_surv * surv_term
+    # Objective = # --- Combine competition and survival interaction directly --- Es el nuevo de mafer
+    surv_factor = {(i, j): 1.0 / (1.0 - surv[species[i]] * surv[species[j]]) for i in range(n_species) for j in range(n_species)}
+    adj_term = pl.lpSum(
+        0.5 * C[i, j] * surv_factor[(i, j)] * y[((u, v), i, j)]
+        for ((u, v), i, j) in pair_index
+    )
+    model += alpha_comp * adj_term
 
     # Solve
     if solver is None:
@@ -323,7 +326,7 @@ def build_and_solve(space: TresBolillosSpace,
 
 
 if __name__ == "__main__":
-    USE_SMALL = True  # ← set True to run the smaller space, False for your 14×47
+    USE_SMALL = False  # ← set True to run the smaller space, False for your 14×47
 
     if USE_SMALL:
         # e.g., 6×6 = 36 nodes with the SAME rules (TOL=0, preplant locked, same objective)
