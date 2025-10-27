@@ -1,3 +1,135 @@
+def fitnessCompetenciaSupervivencia(plantas, matrizCompetencia, vectorSupervivencia=None):
+    """
+    Calcula la competencia total entre las distribución de plantas en una
+    matriz, se asume una distribución de tres bolillos. La competencia se calcula segun
+    la matriz de competencia.
+    """
+    competencia = 0
+
+    rows = len(plantas)
+    cols = len(plantas[0])
+
+    for i in range(rows):
+        for j in range(cols):
+            especie_nodo = plantas[i, j]
+            
+            # Skip empty nodes (-1)
+            if especie_nodo == -1:
+                continue
+                
+            if rows % 2 == 0: # Distribución de tres bolillos - filas pares
+                if i == 0: # Primera fila
+                    if j == 0: # Primera columna
+                        if plantas[i, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i+1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i+1, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j+1]]) if vectorSupervivencia is not None else 1)
+                    elif j == cols-1: # Ultima columna (CORREGIDO: era rows-1)
+                        if plantas[i, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i+1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                    else:
+                        if plantas[i, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i+1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i+1, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j+1]]) if vectorSupervivencia is not None else 1)
+                elif i == rows-1: # Ultima fila
+                    if j == 0: # Primera columna
+                        if plantas[i-1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                    elif j == cols-1: # Ultima columna
+                        if plantas[i, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i-1, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i-1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                    else:
+                        if plantas[i-1, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i-1, j] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i, j-1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        if plantas[i, j+1] >= 0:
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                else: # Filas intermedias
+                    if i % 2 == 0: # Fila par
+                        if j == 0: # Primera columna
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i-1, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                        elif j == cols-1: # Ultima columna (CORREGIDO: era rows-1)
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        else:
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i-1, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                    else: # Fila impar
+                        if j == 0: # Primera columna
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                        elif j == cols-1: # Ultima columna (CORREGIDO: era rows-1)
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i-1, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j-1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j-1] >= 0:  # CORREGIDO: era duplicado
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j-1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+                        else:
+                            if plantas[i-1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i-1, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i-1, j-1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i+1, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i+1, j-1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j+1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j+1]]) if vectorSupervivencia is not None else 1)
+                            if plantas[i, j-1] >= 0:
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] * (1 / (1 - vectorSupervivencia[especie_nodo] * vectorSupervivencia[plantas[i, j-1]]) if vectorSupervivencia is not None else 1)
+
+    return competencia
+
 def fitnessCompetencia(plantas, matrizCompetencia):
     """
     Calcula la competencia total entre las distribución de plantas en una
@@ -35,27 +167,27 @@ def fitnessCompetencia(plantas, matrizCompetencia):
                         if plantas[i, j+1] >= 0:
                             competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]]
                         if plantas[i, j-1] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
+                            competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] 
                         if plantas[i+1, j] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]]
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] 
                         if plantas[i+1, j+1] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]]   
+                            competencia += matrizCompetencia[especie_nodo][plantas[i+1, j+1]] 
                 elif i == rows-1: # Ultima fila
                     if j == 0: # Primera columna
                         if plantas[i-1, j] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] 
                         if plantas[i, j+1] >= 0:
                             competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]]
                     elif j == cols-1: # Ultima columna
                         if plantas[i, j-1] >= 0:
                             competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
                         if plantas[i-1, j-1] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]]
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] 
                         if plantas[i-1, j] >= 0:
                             competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
                     else:
                         if plantas[i-1, j-1] >= 0:
-                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]]
+                            competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]] 
                         if plantas[i-1, j] >= 0:
                             competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
                         if plantas[i, j-1] >= 0:
@@ -66,9 +198,9 @@ def fitnessCompetencia(plantas, matrizCompetencia):
                     if i % 2 == 0: # Fila par
                         if j == 0: # Primera columna
                             if plantas[i-1, j] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]     
                             if plantas[i-1, j+1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j+1]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j+1]] 
                             if plantas[i+1, j] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]]
                             if plantas[i+1, j+1] >= 0:
@@ -84,7 +216,7 @@ def fitnessCompetencia(plantas, matrizCompetencia):
                                 competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
                         else:
                             if plantas[i-1, j] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] 
                             if plantas[i-1, j+1] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i-1, j+1]]
                             if plantas[i+1, j] >= 0:
@@ -94,41 +226,54 @@ def fitnessCompetencia(plantas, matrizCompetencia):
                             if plantas[i, j+1] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]]
                             if plantas[i, j-1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] 
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
                     else: # Fila impar
                         if j == 0: # Primera columna
                             if plantas[i-1, j] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
                             if plantas[i+1, j] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]]
-                            if plantas[i, j+1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]] 
                         elif j == cols-1: # Ultima columna (CORREGIDO: era rows-1)
                             if plantas[i-1, j] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
                             if plantas[i-1, j-1] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]]
                             if plantas[i+1, j] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] 
                             if plantas[i+1, j-1] >= 0:  # CORREGIDO: era duplicado
                                 competencia += matrizCompetencia[especie_nodo][plantas[i+1, j-1]]
                             if plantas[i, j-1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]] 
                         else:
                             if plantas[i-1, j] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i-1, j]] 
                             if plantas[i-1, j-1] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i-1, j-1]]
                             if plantas[i+1, j] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j]] 
                             if plantas[i+1, j-1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j-1]]
+                                competencia += matrizCompetencia[especie_nodo][plantas[i+1, j-1]] 
                             if plantas[i, j+1] >= 0:
                                 competencia += matrizCompetencia[especie_nodo][plantas[i, j+1]]
                             if plantas[i, j-1] >= 0:
-                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]                         
-                                                  
+                                competencia += matrizCompetencia[especie_nodo][plantas[i, j-1]]
+
     return competencia
+
+def fitnessSupervivencia(plantas, vectorSupervivencia):
+    """
+    Calcula la supervivencia total de las plantas en la matriz.
+    La suma de los valores de supervivencia de cada planta.
+    """
+    supervivencia_total = 0
+    for i in range(plantas.shape[0]):
+        for j in range(plantas.shape[1]):
+            especie_nodo = plantas[i, j]
+            if especie_nodo == -1:  # Solo contar nodos con plantas
+                continue
+            supervivencia_total += vectorSupervivencia[especie_nodo]
+    return supervivencia_total
 
 import numpy as np
 
@@ -170,8 +315,8 @@ class PlantDistributionProblem(Problem):
     - Cada solución es un vector 1D de longitud n_nodes
     - Cada gen representa la especie en ese nodo (0-9 para especies, -1 para vacío)
     """
-    
-    def __init__(self, space, competencia_matrix, targets, tol=0.05, enforce_constraints=False):
+
+    def __init__(self, space, competencia_matrix, targets, tol=0.05, enforce_constraints=False, vectorSupervivencia=None):
         """
         Parameters:
         -----------
@@ -195,6 +340,7 @@ class PlantDistributionProblem(Problem):
         self.n_nodes = space.n
         self.n_species = len(space.species)
         self.enforce_constraints = enforce_constraints
+        self.vectorSupervivencia = vectorSupervivencia
         
         # Calcular bandas permitidas por especie
         self.bands_rem, self.checks = space.remaining_bands(targets, tol=tol)
@@ -252,7 +398,7 @@ class PlantDistributionProblem(Problem):
             matrix = np.flipud(matrix)  # Ajustar orientación
             
             # Calcular objetivos
-            competencia_raw = fitnessCompetencia(matrix, self.competencia_matrix)
+            competencia_raw = fitnessCompetenciaSupervivencia(matrix, self.competencia_matrix, self.vectorSupervivencia)
             diversidad_raw = fitnessDiversidad(matrix, self.n_species)
             
             # Normalizar competencia dividiéndola por el número de nodos ocupados
